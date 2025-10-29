@@ -1,0 +1,29 @@
+# Build directories
+_build/
+build/
+out/
+
+# VSCode settings
+.vscode/
+
+# Compiled binaries and hex files
+*.hex
+*.bin
+*.elf
+*.zip
+
+# Backup / temporary files
+*.swp
+*.bak
+*.tmp
+*.log
+
+# IDE files
+*.eww
+*.ewd
+*.ewp
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
