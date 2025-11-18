@@ -32,6 +32,13 @@ SRC_FILES += \
   $(SDK_ROOT)/modules/nrfx/soc/nrfx_atomic.c \
   $(PROJ_DIR)/main.c \
   $(SDK_ROOT)/modules/nrfx/mdk/system_nrf52840.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_pwm.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_gpiote.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_clock.c \
+  $(SDK_ROOT)/components/libraries/timer/app_timer.c \
+  $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_clock.c \
+  $(SDK_ROOT)/components/libraries/timer/drv_rtc.c 
+
 
 # Include folders common to all targets
 INC_FOLDERS += \
@@ -58,7 +65,9 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/libraries/memobj \
   $(SDK_ROOT)/external/fprintf \
   $(SDK_ROOT)/components/libraries/log/src \
-
+  $(SDK_ROOT)/modules/nrfx/drivers/include \
+  $(SDK_ROOT)/components/libraries/timer \
+  $(SDK_ROOT)/integration/nrfx/legacy/ \
 # Libraries common to all targets
 LIB_FILES += \
 
@@ -79,6 +88,27 @@ CFLAGS += -mcpu=cortex-m4
 CFLAGS += -mthumb -mabi=aapcs
 CFLAGS += -Wall -Werror
 CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
+CFLAGS += -DNRFX_GPIOTE_ENABLED=1
+CFLAGS += -DNRFX_GPIOTE_CONFIG_IRQ_PRIORITY=6
+CFLAGS += -DNRFX_GPIOTE_CONFIG_NUM_OF_LOW_POWER_EVENTS=1
+CFLAGS += -DNRFX_PWM_ENABLED=1
+CFLAGS += -DNRFX_PWM0_ENABLED=1
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_IRQ_PRIORITY=6
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_OUT0_PIN=31
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_OUT1_PIN=31
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_OUT2_PIN=31
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_OUT3_PIN=31
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_BASE_CLOCK=4
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_COUNT_MODE=0
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_TOP_VALUE=1000
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_LOAD_MODE=0
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_STEP_MODE=0
+CFLAGS += -DGPIOTE_ENABLED=1
+CFLAGS += -DGPIOTE_CONFIG_NUM_OF_LOW_POWER_EVENTS=1
+CFLAGS += -DNRFX_PRS_ENABLED=1
+CFLAGS += -DNRFX_PRS_BOX_0_ENABLED=1
+CFLAGS += -DNRFX_PRS_CONFIG_IRQ_PRIORITY=6
+CFLAGS += -DNRFX_SYSTICK_ENABLED=1
 # keep every function in a separate section, this allows linker to discard unused ones
 CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing
 CFLAGS += -fno-builtin -fshort-enums
