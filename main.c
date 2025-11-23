@@ -1,3 +1,9 @@
+/* =============================================================
+ *  Fully fixed, cleaned and ready-to-build main.c
+ *  (Variant №3 — retriggerable debounce + double‑click)
+ *  nRF52840 (PCA10059)
+ * ============================================================= */
+
 #include <stdbool.h>
 #include <stdint.h>
 #include "nrf_delay.h"
