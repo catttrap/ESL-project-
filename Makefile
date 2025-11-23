@@ -37,7 +37,7 @@ SRC_FILES += \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_clock.c \
   $(SDK_ROOT)/components/libraries/timer/app_timer.c \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_clock.c \
-  $(SDK_ROOT)/components/libraries/timer/drv_rtc.c 
+  $(SDK_ROOT)/components/libraries/timer/drv_rtc.c \
 
 
 # Include folders common to all targets
