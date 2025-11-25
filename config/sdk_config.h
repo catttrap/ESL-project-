@@ -919,7 +919,7 @@
 // <e> GPIOTE_ENABLED - nrf_drv_gpiote - GPIOTE peripheral driver - legacy layer
 //==========================================================
 #ifndef GPIOTE_ENABLED
-#define GPIOTE_ENABLED 0
+#define GPIOTE_ENABLED 1
 #endif
 // <o> GPIOTE_CONFIG_NUM_OF_LOW_POWER_EVENTS - Number of lower power input pins 
 #ifndef GPIOTE_CONFIG_NUM_OF_LOW_POWER_EVENTS
@@ -1453,7 +1453,7 @@
 #endif
 // <o> NRFX_GPIOTE_CONFIG_NUM_OF_LOW_POWER_EVENTS - Number of lower power input pins 
 #ifndef NRFX_GPIOTE_CONFIG_NUM_OF_LOW_POWER_EVENTS
-#define NRFX_GPIOTE_CONFIG_NUM_OF_LOW_POWER_EVENTS 4
+#define NRFX_GPIOTE_CONFIG_NUM_OF_LOW_POWER_EVENTS 1
 #endif
 
 // <o> NRFX_GPIOTE_CONFIG_IRQ_PRIORITY  - Interrupt priority
@@ -5646,7 +5646,7 @@
 // <31=> 1024 Hz 
 
 #ifndef APP_TIMER_CONFIG_RTC_FREQUENCY
-#define APP_TIMER_CONFIG_RTC_FREQUENCY 1
+#define APP_TIMER_CONFIG_RTC_FREQUENCY 0
 #endif
 
 // <o> APP_TIMER_CONFIG_IRQ_PRIORITY  - Interrupt priority
@@ -5690,7 +5690,7 @@
 // <i> This option can be used when app_timer is used for timestamping.
 
 #ifndef APP_TIMER_KEEPS_RTC_ACTIVE
-#define APP_TIMER_KEEPS_RTC_ACTIVE 0
+#define APP_TIMER_KEEPS_RTC_ACTIVE 1
 #endif
 
 // <o> APP_TIMER_SAFE_WINDOW_MS - Maximum possible latency (in milliseconds) of handling app_timer event. 
@@ -6927,11 +6927,12 @@
 #define BUTTON_ENABLED 1
 #endif
 
+#ifndef APP_BUTTON_ENABLED
+#define APP_BUTTON_ENABLED 1
+#endif
 // <q> BUTTON_HIGH_ACCURACY_ENABLED  - Enables GPIOTE high accuracy for buttons
- 
-
 #ifndef BUTTON_HIGH_ACCURACY_ENABLED
-#define BUTTON_HIGH_ACCURACY_ENABLED 0
+#define BUTTON_HIGH_ACCURACY_ENABLED 1
 #endif
 
 // </h> 
@@ -7294,6 +7295,80 @@
 #define NRF_LOG_TIMESTAMP_DEFAULT_FREQUENCY 0
 #endif
 
+// <<< Use Configuration Wizard in Context Menu >>>
+// <h> nRF Log - UART backend
+
+//==========================================================
+// <o> NRF_LOG_BACKEND_UART_TX_PIN  - UART TX pin 
+    
+#ifndef NRF_LOG_BACKEND_UART_TX_PIN
+#define NRF_LOG_BACKEND_UART_TX_PIN 6
+#endif
+
+// <o> NRF_LOG_BACKEND_UART_BAUDRATE  - Default Baudrate
+    
+// <323584=> 1200 baud 
+// <643072=> 2400 baud 
+// <1290240=> 4800 baud 
+// <2576384=> 9600 baud 
+// <3862528=> 14400 baud 
+// <5152768=> 19200 baud 
+// <7716864=> 28800 baud 
+// <10289152=> 38400 baud 
+// <15400960=> 57600 baud 
+// <20615168=> 76800 baud 
+// <30801920=> 115200 baud 
+// <61865984=> 230400 baud 
+// <67108864=> 250000 baud 
+// <121634816=> 460800 baud 
+// <251658240=> 921600 baud 
+// <268435456=> 1000000 baud 
+
+#ifndef NRF_LOG_BACKEND_UART_BAUDRATE
+#define NRF_LOG_BACKEND_UART_BAUDRATE 30801920
+#endif
+
+// <o> NRF_LOG_BACKEND_UART_TEMP_BUFFER_SIZE - Size of temporary buffer for storing single output. 
+// <i> Size of buffer used for preparing single log entry which is later transferred by UART.
+
+#ifndef NRF_LOG_BACKEND_UART_TEMP_BUFFER_SIZE
+#define NRF_LOG_BACKEND_UART_TEMP_BUFFER_SIZE 256
+#endif
+
+// </h> 
+//==========================================================
+
+// <e> NRF_LOG_BACKEND_UART_ENABLED - nrf_log_backend_uart - Log UART backend
+//==========================================================
+#ifndef NRF_LOG_BACKEND_UART_ENABLED
+#define NRF_LOG_BACKEND_UART_ENABLED 1
+#endif
+// <o> NRF_LOG_BACKEND_UART_INSTANCE  - UART instance used
+    
+// <0=> 0 
+
+#ifndef NRF_LOG_BACKEND_UART_INSTANCE
+#define NRF_LOG_BACKEND_UART_INSTANCE 0
+#endif
+
+// </e>
+
+// <e> NRF_LOG_BACKEND_SERIAL_USES_UART - If enabled then UART is used for logging.
+//==========================================================
+#ifndef NRF_LOG_BACKEND_SERIAL_USES_UART
+#define NRF_LOG_BACKEND_SERIAL_USES_UART 1
+#endif
+// </e>
+
+// <e> NRF_LOG_BACKEND_SERIAL_USES_RTT - If enabled then RTT is used for logging.
+//==========================================================
+#ifndef NRF_LOG_BACKEND_SERIAL_USES_RTT
+#define NRF_LOG_BACKEND_SERIAL_USES_RTT 0
+#endif
+// </e>
+
+// Таймер для логов
+#define NRF_LOG_TIMESTAMP_DEFAULT_ENABLED 1
 // </e>
 
 // <h> nrf_log module configuration 
@@ -10053,6 +10128,20 @@
 
 // </h> 
 //==========================================================
+#ifndef BSP_ENABLED
+#define BSP_ENABLED 1
+#endif
+
+#ifndef BSP_SIMPLE_ENABLED
+#define BSP_SIMPLE_ENABLED 1
+#endif
+
+#ifndef NRF_DELAY_ENABLED
+#define NRF_DELAY_ENABLED 1
+#endif
+#ifndef APP_ERROR_ENABLED
+#define APP_ERROR_ENABLED 1
+#endif
 
 // <<< end of configuration section >>>
 #endif //SDK_CONFIG_H

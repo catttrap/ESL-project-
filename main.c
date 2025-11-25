@@ -1,509 +1,423 @@
-/* =============================================================
- *  Fully fixed, cleaned and ready-to-build main.c
- *  (Variant №3 — retriggerable debounce + double‑click)
- *  nRF52840 (PCA10059)
- * ============================================================= */
-
 #include <stdbool.h>
 #include <stdint.h>
-#include "nrf_delay.h"
+#include <math.h>
 #include "nrf_gpio.h"
 #include "nrfx_pwm.h"
 #include "nrfx_gpiote.h"
 #include "app_timer.h"
-#include "app_error.h"
-#include "math.h"
+#include "nrfx_clock.h"
 
 /* ---------------- Pins ---------------- */
-#define LED_RED     NRF_GPIO_PIN_MAP(0,6)    /**< Пин красного светодиода */
-#define LED_GREEN   NRF_GPIO_PIN_MAP(0,8)    /**< Пин зеленого светодиода */
+#define INDICATOR_LED_PIN NRF_GPIO_PIN_MAP(0,6)
+#define LED_RED     NRF_GPIO_PIN_MAP(0,8)    /**< Пин красного светодиода */
+#define LED_GREEN   NRF_GPIO_PIN_MAP(1,9)    /**< Пин зеленого светодиода */
 #define LED_BLUE    NRF_GPIO_PIN_MAP(0,12)   /**< Пин синего светодиода */
 #define BUTTON_PIN  NRF_GPIO_PIN_MAP(1,6)    /**< Пин кнопки (активный низкий уровень) */
 
 /* ---------------- PWM ---------------- */
-#define DUTY_MAX   1000  /**< Максимальное значение скважности (100%) для ШИМ 1кГц */
-#define DUTY_STEP  50    /**< Шаг изменения скважности при одинарном клике */
-#define BREATHE_STEPS 200  /**< Количество шагов для полного цикла дыхания */
+#define PWM_CHANNELS           4    /**< Количество каналов PWM */
+#define DUTY_MAX          1000  /**< Максимальное значение скважности (100%) для ШИМ 1кГц */
 
 /* ---------------- Timings ---------------- */
-#define DEBOUNCE_MS        30  /**< Время антидребезга в миллисекундах */
-#define DOUBLE_CLICK_MS   300  /**< Таймаут для обнаружения двойного клика */
-#define BREATHE_DELAY_MS   16  /**< Период обновления анимации дыхания (~60 FPS) */
+#define MAIN_TIMER_INTERVAL_MS 20   /**< Интервал основного таймера в мс */
+#define DEBOUNCE_MS       200   /**< Время антидребезга в миллисекундах */
+#define DOUBLE_CLICK_MS   500   /**< Таймаут для обнаружения двойного клика */
 
-/** 
- * @brief Массив пинов светодиодов
- * @note Последовательность для устройства #6601: зеленый → красный → синий
- */
-static const uint32_t leds[3] = {LED_GREEN, LED_RED, LED_BLUE};
+#define HOLD_INTERVAL_MS       MAIN_TIMER_INTERVAL_MS   /**< Интервал изменения при удержании кнопки */
+#define HUE_HOLD_STEP          1    /**< Шаг изменения оттенка при удержании */
+#define SAT_VAL_HOLD_STEP      1    /**< Шаг изменения насыщенности и яркости при удержании */
 
-/**
- * @brief Количество циклов мигания для каждого светодиода
- * @details green:6, red:6, blue:1
- */
-static const uint8_t sequence_counts[] = {6, 6, 1};
-
-/* PWM */
-static nrfx_pwm_t pwm = NRFX_PWM_INSTANCE(0);          /**< Экземпляр ШИМ */
-static nrf_pwm_values_common_t pwm_value;              /**< Текущее значение ШИМ */
-static nrf_pwm_sequence_t pwm_seq;                     /**< Последовательность ШИМ */
-static bool pwm_playing = false;                       /**< Флаг активности ШИМ */
-
-/* Timers */
-APP_TIMER_DEF(debounce_timer);                         /**< Таймер антидребезга */
-APP_TIMER_DEF(double_click_timer);                     /**< Таймер двойного клика */
-APP_TIMER_DEF(breathe_timer);                          /**< Таймер анимации дыхания */
-
-/* Button FSM */
-static volatile bool btn_last_raw = true;              /**< Последнее сырое состояние кнопки */
-static volatile bool btn_stable_state = true;          /**< Стабильное состояние после антидребезга */
-static volatile bool click_waiting_second = false;     /**< Ожидание второго клика */
-static volatile bool press_pending = false;            /**< Ожидание отпускания кнопки */
-
-/**
- * @brief Состояния конечного автомата кликов
- */
-typedef enum { 
-    CLICK_IDLE,          /**< Ожидание клика */
-    CLICK_WAIT_SECOND    /**< Ожидание второго клика для двойного */
-} click_state_t;
-
-static click_state_t click_state = CLICK_IDLE;         /**< Текущее состояние кликов */
-
-/* Breathing LED state */
-static volatile bool blinking_enabled = false;         /**< Флаг включения автоматического мигания */
-static volatile bool breathing_paused = false;         /**< Флаг паузы анимации дыхания */
-static uint8_t sequence_index = 0;                     /**< Индекс текущего светодиода в последовательности */
-static uint8_t current_blink = 0;                      /**< Счетчик текущих миганий */
-static uint32_t current_step = 0;                      /**< Текущий шаг анимации дыхания */
-static uint32_t current_led_pin = LED_GREEN;           /**< Пин текущего активного светодиода */
-static uint32_t manual_duty = 0;                       /**< Значение скважности для ручного управления */
+#define SLOW_BLINK_PERIOD_MS   1500 /**< Период медленного мигания в мс */  
+#define FAST_BLINK_PERIOD_MS   500  /**< Период быстрого мигания в мс */
 
 /* ---------------- Forward decl ---------------- */
-static void debounce_timer_handler(void *p_context);
-static void double_click_timer_handler(void *p_context);
-static void breathe_timer_handler(void *p_context);
-static void gpiote_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action);
-static void button_stable_event(uint8_t state);
-static void handle_single_click(void);
-static void handle_double_click(void);
-static void switch_to_next_led(void);
-static void update_pwm(void);
-static uint32_t calculate_sine_duty(uint32_t step);
+void pwm_init(void);
+void button_init(void);
+void main_timer_handler(void * p_context);
+void debounce_timer_handler(void * p_context);
+void double_click_timer_handler(void * p_context);
+void button_press_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action);
+static void update_indicator_for_current_mode(void);
+static inline int clamp_value(int value, int min, int max);
+static void convert_hsv_to_rgb(float hue, int saturation, int value, uint16_t *red, uint16_t *green, uint16_t *blue);
+static void update_pwm_outputs(uint16_t indicator, uint16_t red, uint16_t green, uint16_t blue);
+
+
+static nrfx_pwm_t m_pwm_instance = NRFX_PWM_INSTANCE(0);    /**< Экземпляр PWM */
+static nrf_pwm_values_individual_t m_pwm_channel_values;    /**< Значения для каналов PWM */
 
 /**
- * @brief Инициализация низкочастотного тактового генератора
- * @details Необходим для работы модуля app_timer
+ * @brief Режимы ввода устройства
  */
-static void lfclk_init(void)
-{
-    NRF_CLOCK->TASKS_LFCLKSTART = 1;
-    while (!NRF_CLOCK->EVENTS_LFCLKSTARTED) {}
-    NRF_CLOCK->EVENTS_LFCLKSTARTED = 0;
+typedef enum {
+    MODE_NO_INPUT = 0,  /**< Режим без ввода */
+    MODE_HUE,           /**< Режим изменения оттенка */
+    MODE_SATURATION,    /**< Режим изменения насыщенности */
+    MODE_VALUE          /**< Режим изменения яркости */
+} input_mode_t;
+
+
+static volatile input_mode_t m_current_mode = MODE_NO_INPUT;    /**< Текущий режим работы */
+
+static float m_current_hue = 0.0f;  /**< Текущий оттенок (0-360 градусов) */    
+static int   m_current_saturation = 100;    /**< Текущая насыщенность (0-100%) */     
+static int   m_current_value = 100; /**< Текущая яркость (0-100%) */    
+
+static int m_hue_direction = 1; /**< Направление изменения оттенка */
+static int m_saturation_direction = 1;  /**< Направление изменения насыщенности */
+static int m_value_direction = 1;   /**< Направление изменения яркости */
+
+static int m_indicator_brightness = 0;  /**< Текущая яркость индикатора */
+static int m_indicator_direction = 1;   /**< Направление изменения яркости индикатора */
+
+
+static volatile bool m_button_blocked = false;  /**< Флаг блокировки кнопки (антидребезг) */
+static volatile bool m_first_click_detected = false;    /**< Флаг обнаружения первого клика */
+static volatile bool m_button_hold = false; /**< Флаг удержания кнопки */
+
+APP_TIMER_DEF(main_timer);  /**< Таймер основного цикла */
+APP_TIMER_DEF(debounce_timer);  /**< Таймер антидребезга */
+APP_TIMER_DEF(double_click_timer);  /**< Таймер двойного клика */
+
+
+static uint32_t m_indicator_step = 1;   /**< Шаг изменения индикатора */
+
+static uint32_t m_indicator_period_ms = SLOW_BLINK_PERIOD_MS;   /**< Период мигания индикатора */
+
+/**
+* @brief Вспомогательная функция: ограничение целого значения в диапазоне.
+* @param v значение
+* @param min нижняя граница
+* @param max верхняя граница
+* @return ограниченное значение
+*/
+static inline int clamp_value(int value, int min, int max) {
+    if (value < min) return min;
+    if (value > max) return max;
+    return value;
 }
 
 /**
- * @brief Инициализация таймеров приложения
- * @details Создает три таймера: антидребезг, двойной клик и анимацию дыхания
+ * @brief Конвертирует цвет из HSV в RGB пространство
+ * @param hue Оттенок (0-360 градусов)
+ * @param saturation Насыщенность (0-100%)
+ * @param value Яркость (0-100%)
+ * @param red Указатель для красной компоненты
+ * @param green Указатель для зеленой компоненты
+ * @param blue Указатель для синей компоненты
  */
-static void timers_init(void)
-{
-    app_timer_init();
+static void convert_hsv_to_rgb(float hue, int saturation, int value, uint16_t *red, uint16_t *green, uint16_t *blue) {
+    float hue_normalized = hue;
+    float saturation_normalized = saturation / 100.0f;
+    float value_normalized = value / 100.0f;
 
-    app_timer_create(&debounce_timer,
-                     APP_TIMER_MODE_SINGLE_SHOT,
-                     debounce_timer_handler);
-
-    app_timer_create(&double_click_timer,
-                     APP_TIMER_MODE_SINGLE_SHOT,
-                     double_click_timer_handler);
-                     
-    app_timer_create(&breathe_timer,
-                     APP_TIMER_MODE_REPEATED,
-                     breathe_timer_handler);
-}
-
-/**
- * @brief Инициализация ШИМ для указанного пина светодиода
- * @param[in] led_pin Пин светодиода для управления ШИМ
- * @details Настраивает ШИМ с частотой 1кГц и инвертированным выходом
- */
-static void pwm_init_for_pin(uint32_t led_pin)
-{
-    nrfx_pwm_uninit(&pwm);
-
-    nrfx_pwm_config_t cfg = {
-        .output_pins = {
-            led_pin | NRFX_PWM_PIN_INVERTED,  /**< Инвертированный выход для активного низкого уровня */
-            NRFX_PWM_PIN_NOT_USED,
-            NRFX_PWM_PIN_NOT_USED,
-            NRFX_PWM_PIN_NOT_USED
-        },
-        .irq_priority = 6,
-        .base_clock = NRF_PWM_CLK_1MHz,       /**< Тактовая частота 1МГц для ШИМ 1кГц */
-        .count_mode = NRF_PWM_MODE_UP,
-        .top_value = DUTY_MAX,                /**< 1000 шагов = 1мс период = 1кГц */
-        .load_mode = NRF_PWM_LOAD_COMMON,
-        .step_mode = NRF_PWM_STEP_AUTO,
-    };
-
-    APP_ERROR_CHECK(nrfx_pwm_init(&pwm, &cfg, NULL));
-
-    pwm_value = DUTY_MAX;  /**< Начальное значение - светодиод выключен (инвертировано) */
-    pwm_seq.values.p_common = &pwm_value;
-    pwm_seq.length = 1;
-    pwm_seq.repeats = 0;
-    pwm_seq.end_delay = 0;
-    pwm_playing = false;
-}
-
-/**
- * @brief Запуск воспроизведения ШИМ
- * @details Запускает циклическое воспроизведение ШИМ последовательности
- */
-static void start_pwm_playback(void)
-{
-    if (!pwm_playing) {
-        APP_ERROR_CHECK(nrfx_pwm_simple_playback(&pwm, &pwm_seq, 1, NRFX_PWM_FLAG_LOOP));
-        pwm_playing = true;
-    }
-}
-
-/**
- * @brief Остановка воспроизведения ШИМ
- * @details Полностью останавливает генерацию ШИМ сигнала
- */
-static void stop_pwm_playback(void)
-{
-    if (pwm_playing) {
-        nrfx_pwm_stop(&pwm, true);
-        pwm_playing = false;
-    }
-}
-
-/**
- * @brief Обновление значения ШИМ
- * @details Устанавливает новое значение скважности и перезапускает ШИМ
- */
-static void update_pwm(void)
-{
-    if (blinking_enabled && !breathing_paused) {
-        /** Автоматическое дыхание - используем синусоидальную функцию */
-        pwm_value = DUTY_MAX - calculate_sine_duty(current_step);
-    } else {
-        /** Ручное управление - используем установленную скважность */
-        pwm_value = DUTY_MAX - manual_duty;
-    }
-    
-    if (pwm_playing) {
-        /** Перезапуск ШИМ с новым значением скважности */
-        nrfx_pwm_stop(&pwm, false);
-        nrfx_pwm_simple_playback(&pwm, &pwm_seq, 1, NRFX_PWM_FLAG_LOOP);
-    }
-}
-
-/**
- * @brief Расчет скважности для плавного дыхания
- * @param[in] step Текущий шаг анимации (0-BREATHE_STEPS)
- * @return Значение скважности для ШИМ
- * @details Использует синусоидальную функцию с квадратом для естественного дыхания
- */
-static uint32_t calculate_sine_duty(uint32_t step)
-{
-    /** Нормализация шага в диапазон 0-2π */
-    float angle = (2.0f * 3.14159265f * step) / BREATHE_STEPS;
-    
-    /** Синусоида от 0 до 1 */
-    float sine_value = (1.0f - cosf(angle)) / 2.0f;
-    
-    /** Квадрат синусоиды для более естественного дыхания */
-    sine_value = sine_value * sine_value;
-    
-    return (uint32_t)(sine_value * DUTY_MAX);
-}
-
-/**
- * @brief Переключение на следующий светодиод в последовательности
- * @details Останавливает ШИМ, переключает светодиод и переинициализирует ШИМ
- */
-static void switch_to_next_led(void)
-{
-    /** Остановка ШИМ перед переключением светодиода */
-    stop_pwm_playback();
-
-    /** Переход к следующему светодиоду в последовательности */
-    sequence_index = (sequence_index + 1) % 3;
-    current_led_pin = leds[sequence_index];
-    current_blink = 0;
-    current_step = 0;
-
-    /** Переинициализация ШИМ для нового пина светодиода */
-    pwm_init_for_pin(current_led_pin);
-    
-    /** Запуск ШИМ */
-    update_pwm();
-    start_pwm_playback();
-}
-
-/**
- * @brief Обработчик таймера анимации дыхания
- * @param[in] p_context Контекст таймера (не используется)
- * @details Обновляет шаг анимации и проверяет завершение циклов мигания
- */
-static void breathe_timer_handler(void *p_context)
-{
-    /** Выход если анимация отключена или на паузе */
-    if (!blinking_enabled || breathing_paused) {
+    // Если насыщенность нулевая - оттенки серого
+    if (saturation_normalized <= 0.0f) {
+        uint16_t gray_value = (uint16_t)(value_normalized * DUTY_MAX + 0.5f);
+        *red = *green = *blue = gray_value;
         return;
     }
 
-    /** Обновление шага анимации дыхания */
-    current_step = (current_step + 1) % BREATHE_STEPS;
+    // Нормализация оттенка
+    if (hue_normalized >= 360.0f) hue_normalized = 0.0f;
+    float hue_sector = hue_normalized / 60.0f;
+    int sector_index = (int)floorf(hue_sector);
+    float fractional = hue_sector - sector_index;
     
-    /** Проверка завершения полного цикла дыхания */
-    if (current_step == 0) {
-        current_blink++;
-        /** Проверка достижения лимита миганий для текущего светодиода */
-        if (current_blink >= sequence_counts[sequence_index]) {
-            switch_to_next_led();
-        }
+    // Промежуточные значения
+    float p = value_normalized * (1.0f - saturation_normalized);
+    float q = value_normalized * (1.0f - saturation_normalized * fractional);
+    float t = value_normalized * (1.0f - saturation_normalized * (1.0f - fractional));
+
+    float red_float = 0, green_float = 0, blue_float = 0;
+    
+    // Выбор сектора цветового круга
+    switch (sector_index) {
+        case 0: red_float = value_normalized; green_float = t; blue_float = p; break;
+        case 1: red_float = q; green_float = value_normalized; blue_float = p; break;
+        case 2: red_float = p; green_float = value_normalized; blue_float = t; break;
+        case 3: red_float = p; green_float = q; blue_float = value_normalized; break;
+        case 4: red_float = t; green_float = p; blue_float = value_normalized; break;
+        default: red_float = value_normalized; green_float = p; blue_float = q; break;
     }
-    
-    update_pwm();
+
+    // Конвертация в PWM значения
+    *red = (uint16_t)clamp_value((int)roundf(red_float * DUTY_MAX), 0, DUTY_MAX);
+    *green = (uint16_t)clamp_value((int)roundf(green_float * DUTY_MAX), 0, DUTY_MAX);
+    *blue = (uint16_t)clamp_value((int)roundf(blue_float * DUTY_MAX), 0, DUTY_MAX);
 }
 
 /**
- * @brief Обработчик таймера антидребезга
- * @param[in] p_context Контекст таймера (не используется)
- * @details Читает текущее состояние кнопки и обновляет стабильное состояние
+ * @brief Обновляет выходы PWM
+ * @param indicator Яркость индикаторного светодиода
+ * @param red Яркость красного канала
+ * @param green Яркость зеленого канала
+ * @param blue Яркость синего канала
  */
-static void debounce_timer_handler(void *p_context)
-{
-    bool raw = nrf_gpio_pin_read(BUTTON_PIN);
+static void update_pwm_outputs(uint16_t indicator, uint16_t red, uint16_t green, uint16_t blue) {
+    m_pwm_channel_values.channel_0 = indicator;
+    m_pwm_channel_values.channel_1 = red;
+    m_pwm_channel_values.channel_2 = green;
+    m_pwm_channel_values.channel_3 = blue;
 
-    if (raw != btn_stable_state) {
-        btn_stable_state = raw;
-        button_stable_event(raw);
-    }
+    nrf_pwm_sequence_t sequence = {
+        .values.p_individual = &m_pwm_channel_values,
+        .length = PWM_CHANNELS,
+        .repeats = 0,
+        .end_delay = 0
+    };
+
+    nrfx_pwm_simple_playback(&m_pwm_instance, &sequence, 1, 0);
 }
 
 /**
- * @brief Обработчик таймаута двойного клика
- * @param[in] p_context Контекст таймера (не используется)
- * @details Вызывается при таймауте двойного клика - обрабатывает одинарный клик
+ * @brief Обновляет параметры индикатора для текущего режима
  */
-static void double_click_timer_handler(void *p_context)
-{
-    /** Таймаут двойного клика - обработка одинарного клика */
-    handle_single_click();
-    
-    click_state = CLICK_IDLE;
-    click_waiting_second = false;
-}
-
-/**
- * @brief Обработчик одинарного клика
- * @details Изменяет скважность ШИМ. В автоматическом режиме переводит в паузу.
- */
-static void handle_single_click(void)
-{
-    /** В автоматическом режиме - пауза и переход к ручному управлению */
-    if (blinking_enabled && !breathing_paused) {
-        breathing_paused = true;
-        app_timer_stop(breathe_timer);
-        
-        /** Сохранение текущей скважности для ручного управления */
-        manual_duty = calculate_sine_duty(current_step);
+static void update_indicator_for_current_mode(void) {
+    switch (m_current_mode) {
+        case MODE_NO_INPUT:
+            m_indicator_period_ms = 0; // Индикатор выключен
+            break;
+        case MODE_HUE:
+            m_indicator_period_ms = SLOW_BLINK_PERIOD_MS; // Медленное мигание
+            break;
+        case MODE_SATURATION:
+            m_indicator_period_ms = FAST_BLINK_PERIOD_MS; // Быстрое мигание
+            break;
+        case MODE_VALUE:
+            m_indicator_period_ms = 1; // Постоянно включен
+            break;
     }
     
-    /** Изменение скважности (циклическое от 0% до 100%) */
-    manual_duty += DUTY_STEP;
-    if (manual_duty > DUTY_MAX) {
-        manual_duty = 0;
-    }
-    
-    /** Визуальная обратная связь - короткое мигание */
-    nrf_gpio_pin_write(current_led_pin, 0);
-    nrf_delay_ms(30);
-    nrf_gpio_pin_write(current_led_pin, 1);
-    nrf_delay_ms(30);
-    
-    update_pwm();
-    if (!pwm_playing) {
-        start_pwm_playback();
-    }
-}
-
-/**
- * @brief Обработчик двойного клика
- * @details Переключает между автоматическим и ручным режимом работы
- */
-static void handle_double_click(void)
-{
-    /** Переключение режима работы */
-    blinking_enabled = !blinking_enabled;
-    
-    if (blinking_enabled) {
-        /** Включение автоматического дыхания */
-        breathing_paused = false;
-        current_step = 0;
-        current_blink = 0;
-        
-        /** Запуск таймера анимации */
-        app_timer_start(breathe_timer, APP_TIMER_TICKS(BREATHE_DELAY_MS), NULL);
-        
-        /** Визуальная обратная связь - быстрое мигание */
-        for (int i = 0; i < 3; i++) {
-            nrf_gpio_pin_write(current_led_pin, 0);
-            nrf_delay_ms(50);
-            nrf_gpio_pin_write(current_led_pin, 1);
-            nrf_delay_ms(50);
-        }
+    // Расчет шага изменения индикатора
+    if (m_indicator_period_ms > 0) {
+        // Половина периода на нарастание яркости
+        m_indicator_step = (int)ceilf((float)DUTY_MAX * 
+                         ((float)MAIN_TIMER_INTERVAL_MS / (m_indicator_period_ms / 2.0f)));
     } else {
-        /** Выключение автоматического дыхания - переход в ручной режим */
-        breathing_paused = true;
-        app_timer_stop(breathe_timer);
-        
-        /** Визуальная обратная связь - долгое мигание */
-        nrf_gpio_pin_write(current_led_pin, 0);
-        nrf_delay_ms(200);
-        nrf_gpio_pin_write(current_led_pin, 1);
-        nrf_delay_ms(100);
+        m_indicator_step = DUTY_MAX;
     }
     
-    update_pwm();
-    if (!pwm_playing) {
-        start_pwm_playback();
-    }
+    if (m_indicator_step < 1) m_indicator_step = 1;
 }
 
 /**
- * @brief Обработчик события нажатия кнопки
- * @details Определяет тип клика (одинарный/двойной) и запускает соответствующий обработчик
+ * @brief Инициализация PWM
  */
-static void handle_button_click(void)
-{
-    if (click_state == CLICK_IDLE) {
-        /** Первый клик - ожидание потенциального двойного клика */
-        click_state = CLICK_WAIT_SECOND;
-        click_waiting_second = true;
-        app_timer_start(double_click_timer, APP_TIMER_TICKS(DOUBLE_CLICK_MS), NULL);
-    }
-    else if (click_state == CLICK_WAIT_SECOND) {
-        /** Обнаружен двойной клик */
-        app_timer_stop(double_click_timer);
-        handle_double_click();
-        click_state = CLICK_IDLE;
-        click_waiting_second = false;
-    }
+void pwm_init(void) {
+    nrfx_pwm_config_t pwm_config = NRFX_PWM_DEFAULT_CONFIG;
+    pwm_config.output_pins[0] = INDICATOR_LED_PIN;   // LED1 - индикатор
+    pwm_config.output_pins[1] = LED_RED;     // LED2 - красный
+    pwm_config.output_pins[2] = LED_GREEN;   // LED2 - зеленый
+    pwm_config.output_pins[3] = LED_BLUE;    // LED2 - синий
+    pwm_config.base_clock = NRF_PWM_CLK_1MHz;
+    pwm_config.count_mode = NRF_PWM_MODE_UP;
+    pwm_config.top_value  = DUTY_MAX;
+    pwm_config.load_mode  = NRF_PWM_LOAD_INDIVIDUAL;
+    pwm_config.step_mode  = NRF_PWM_STEP_AUTO;
+
+    nrfx_pwm_init(&m_pwm_instance, &pwm_config, NULL);
+
+    // Инициализация значений каналов
+    m_pwm_channel_values.channel_0 = 0;
+    m_pwm_channel_values.channel_1 = 0;
+    m_pwm_channel_values.channel_2 = 0;
+    m_pwm_channel_values.channel_3 = 0;
+
+    // Создание и запуск основного таймера
+    app_timer_create(&main_timer, APP_TIMER_MODE_REPEATED, main_timer_handler);
+    app_timer_start(main_timer, APP_TIMER_TICKS(MAIN_TIMER_INTERVAL_MS), NULL);
 }
 
 /**
- * @brief Обработчик стабильного состояния кнопки
- * @param[in] state Стабильное состояние кнопки (0=нажата, 1=отпущена)
- * @details Вызывается после антидребезга, обрабатывает только отпускание кнопки
+ * @brief Инициализация кнопки
  */
-static void button_stable_event(uint8_t state)
-{
-    if (state == 0) {
-        /** Кнопка нажата - установка флага ожидания */
-        press_pending = true;
-    }
-    else {
-        /** Кнопка отпущена - обработка клика */
-        if (press_pending) {
-            handle_button_click();
-            press_pending = false;
-        }
-    }
-}
-
-/**
- * @brief Обработчик прерывания GPIOTE
- * @param[in] pin Пин вызвавший прерывание
- * @param[in] action Тип изменения пина
- * @details Запускает таймер антидребезга при изменении состояния кнопки
- */
-static void gpiote_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action)
-{
-    bool raw = nrf_gpio_pin_read(BUTTON_PIN);
-
-    if (raw != btn_last_raw) {
-        btn_last_raw = raw;
-        app_timer_start(debounce_timer, APP_TIMER_TICKS(DEBOUNCE_MS), NULL);
-    }
-}
-
-/**
- * @brief Инициализация модуля GPIOTE
- * @details Настраивает прерывание по изменению состояния кнопки с подтяжкой к питанию
- */
-static void gpiote_init(void)
-{
+void button_init(void) {
     if (!nrfx_gpiote_is_init()) {
         nrfx_gpiote_init();
     }
 
-    nrfx_gpiote_in_config_t cfg = NRFX_GPIOTE_CONFIG_IN_SENSE_TOGGLE(true);
-    cfg.pull = NRF_GPIO_PIN_PULLUP;
+    // Настройка пина кнопки
+    nrf_gpio_cfg_input(BUTTON_PIN, NRF_GPIO_PIN_PULLUP);
 
-    nrfx_gpiote_in_init(BUTTON_PIN, &cfg, gpiote_handler);
+    // Конфигурация GPIOTE для кнопки
+    nrfx_gpiote_in_config_t input_config = NRFX_GPIOTE_CONFIG_IN_SENSE_HITOLO(true);
+    input_config.pull = NRF_GPIO_PIN_PULLUP;
+
+    nrfx_gpiote_in_init(BUTTON_PIN, &input_config, button_press_handler);
     nrfx_gpiote_in_event_enable(BUTTON_PIN, true);
+
+    // Создание таймеров для обработки кнопки
+    app_timer_create(&debounce_timer, APP_TIMER_MODE_SINGLE_SHOT, debounce_timer_handler);
+    app_timer_create(&double_click_timer, APP_TIMER_MODE_SINGLE_SHOT, double_click_timer_handler);
 }
 
 /**
- * @brief Выключение всех светодиодов
- * @details Настраивает все пины светодиодов как выходы и выключает их
+ * @brief Обработчик таймера антидребезга
  */
-static void turn_off_all_leds(void)
-{
-    for (uint8_t i = 0; i < 3; i++) {
-        nrf_gpio_cfg_output(leds[i]);
-        nrf_gpio_pin_write(leds[i], 1); /**< Светодиоды с активным низким уровнем, 1 = выключено */
-    }
+void debounce_timer_handler(void *p_context) {
+    (void)p_context;
+    m_button_blocked = false;
 }
 
 /**
- * @brief Главная функция программы
- * @return Код возврата (не возвращается)
- * @details Инициализирует все модули и запускает основной цикл обработки
+ * @brief Обработчик таймера двойного клика
  */
-int main(void)
-{
-    /** Инициализация тактового генератора */
-    lfclk_init();
-    
-    /** Инициализация таймеров */
-    timers_init();
-    
-    /** Выключение всех светодиодов */
-    turn_off_all_leds();
+void double_click_timer_handler(void *p_context) {
+    (void)p_context;
+    m_first_click_detected = false;
+}
 
-    /** Инициализация начального состояния - зеленый светодиод */
-    sequence_index = 0;
-    current_led_pin = leds[sequence_index];
-    pwm_init_for_pin(current_led_pin);
+/**
+ * @brief Обработчик нажатия кнопки
+ */
+void button_press_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
+    (void)pin; 
+    (void)action;
 
-    /** Инициализация обработки кнопки */
-    gpiote_init();
+    // Пропуск если кнопка заблокирована (антидребезг)
+    if (m_button_blocked) return;
 
-    /** Индикация запуска - тройное мигание зеленым */
-    for (int i = 0; i < 3; i++) {
-        nrf_gpio_pin_write(LED_GREEN, 0);
-        nrf_delay_ms(150);
-        nrf_gpio_pin_write(LED_GREEN, 1);
-        nrf_delay_ms(150);
+    m_button_blocked = true;
+    app_timer_start(debounce_timer, APP_TIMER_TICKS(DEBOUNCE_MS), NULL);
+
+    // Обработка одиночного/двойного клика
+    if (!m_first_click_detected) {
+        m_first_click_detected = true;
+        app_timer_start(double_click_timer, APP_TIMER_TICKS(DOUBLE_CLICK_MS), NULL);
+    } else {
+        m_first_click_detected = false;
+        app_timer_stop(double_click_timer);
+
+        // Циклическое переключение режимов
+         m_current_mode = (m_current_mode + 1) % 4;
+
+        // Сброс направлений изменения
+        m_hue_direction = 1;
+        m_saturation_direction = 1;
+        m_value_direction = 1;
+
+        update_indicator_for_current_mode();
     }
 
-    /** Начальное состояние - ручной режим с нулевой скважностью */
-    manual_duty = 0;
-    blinking_enabled = false;
-    breathing_paused = true;
-    update_pwm();
-    start_pwm_playback();
+    m_button_hold = true;
+}
 
-    /** Основной цикл программы */
+/**
+ * @brief Обработчик основного таймера
+ */
+void main_timer_handler(void *p_context) {
+    (void)p_context;
+
+    // Проверка отпускания кнопки
+    if (m_button_hold) {
+        if (nrf_gpio_pin_read(BUTTON_PIN) != 0) {
+            m_button_hold = false;
+        }
+    }
+
+    // Обработка удержания кнопки в активных режимах
+    if (m_button_hold && m_current_mode != MODE_NO_INPUT) {
+        switch (m_current_mode) {
+            case MODE_HUE:
+                m_current_hue += m_hue_direction * HUE_HOLD_STEP;
+                if (m_current_hue >= 360.0f) {
+                    m_current_hue = 360.0f;
+                    m_hue_direction = -1;
+                } else if (m_current_hue <= 0.0f) {
+                    m_current_hue = 0.0f;
+                    m_hue_direction = 1;
+                }
+                break;
+                
+            case MODE_SATURATION:
+                m_current_saturation += m_saturation_direction * SAT_VAL_HOLD_STEP;
+                if (m_current_saturation >= 100) {
+                    m_current_saturation = 100;
+                    m_saturation_direction = -1;
+                } else if (m_current_saturation <= 0) {
+                    m_current_saturation = 0;
+                    m_saturation_direction = 1;
+                }
+                break;
+                
+            case MODE_VALUE:
+                m_current_value += m_value_direction * SAT_VAL_HOLD_STEP;
+                if (m_current_value >= 100) {
+                    m_current_value = 100;
+                    m_value_direction = -1;
+                } else if (m_current_value <= 0) {
+                    m_current_value = 0;
+                    m_value_direction = 1;
+                }
+                break;
+                
+            default:
+                break;
+        }
+    }
+
+    // Обновление индикатора
+    uint16_t indicator_brightness = 0;
+    if (m_current_mode == MODE_NO_INPUT) {
+        indicator_brightness = 0;
+        m_indicator_brightness = 0;
+    } else if (m_current_mode == MODE_VALUE) {
+        indicator_brightness = DUTY_MAX;
+        m_indicator_brightness = DUTY_MAX;
+    } else {
+        if (m_indicator_period_ms > 0) {
+            m_indicator_brightness += (int)m_indicator_step * m_indicator_direction;
+            if (m_indicator_brightness >= (int)DUTY_MAX) {
+                m_indicator_brightness = DUTY_MAX;
+                m_indicator_direction = -1;
+            } else if (m_indicator_brightness <= 0) {
+                m_indicator_brightness = 0;
+                m_indicator_direction = 1;
+            }
+            indicator_brightness = (uint16_t)clamp_value(m_indicator_brightness, 0, DUTY_MAX);
+        } else {
+            indicator_brightness = 0;
+        }
+    }
+
+    // Обновление цвета RGB светодиода
+    uint16_t red, green, blue;
+    convert_hsv_to_rgb(m_current_hue, m_current_saturation, m_current_value, &red, &green, &blue);
+    update_pwm_outputs(indicator_brightness, red, green, blue);
+}
+
+/**
+ * @brief Основная функция программы
+ */
+int main(void) {
+    // Инициализация тактирования
+    nrfx_clock_init(NULL);
+    nrfx_clock_lfclk_start();
+    while(!nrfx_clock_lfclk_is_running());
+
+    // Инициализация таймеров
+    app_timer_init();
+
+    // Установка начальных значений HSV
+    m_current_saturation = 100;
+    m_current_value = 100;
+    m_current_hue = (1.0f / 100.0f) * 360.0f; // 1% от 360° = 3.6°
+
+    // Настройка индикатора для текущего режима
+    update_indicator_for_current_mode();
+
+    // Инициализация периферии
+    pwm_init();
+    button_init();
+
+    // Установка начального цвета
+    uint16_t red, green, blue;
+    convert_hsv_to_rgb(m_current_hue, m_current_saturation, m_current_value, &red, &green, &blue);
+    update_pwm_outputs(0, red, green, blue);
+
+    // Основной цикл
     while (1) {
-        /** Основная работа выполняется в обработчиках прерываний и таймеров */
-        nrf_delay_ms(100);
+        __WFE();
     }
 }
