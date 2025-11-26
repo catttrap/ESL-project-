@@ -16,6 +16,9 @@ SRC_FILES += \
   $(SDK_ROOT)/modules/nrfx/mdk/gcc_startup_nrf52840.S \
   $(SDK_ROOT)/components/libraries/log/src/nrf_log_frontend.c \
   $(SDK_ROOT)/components/libraries/log/src/nrf_log_str_formatter.c \
+  $(SDK_ROOT)/components/libraries/log/src/nrf_log_default_backends.c \
+  $(SDK_ROOT)/components/libraries/log/src/nrf_log_backend_serial.c \
+  $(SDK_ROOT)/components/libraries/log/src/nrf_log_backend_uart.c \
   $(SDK_ROOT)/components/boards/boards.c \
   $(SDK_ROOT)/components/libraries/util/app_error.c \
   $(SDK_ROOT)/components/libraries/util/app_error_handler_gcc.c \
@@ -38,6 +41,13 @@ SRC_FILES += \
   $(SDK_ROOT)/components/libraries/timer/app_timer.c \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_clock.c \
   $(SDK_ROOT)/components/libraries/timer/drv_rtc.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_uart.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_uarte.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/prs/nrfx_prs.c \
+  $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_uart.c \
+  $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_power.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_power.c \
+
 
 
 # Include folders common to all targets
@@ -67,7 +77,8 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/libraries/log/src \
   $(SDK_ROOT)/modules/nrfx/drivers/include \
   $(SDK_ROOT)/components/libraries/timer \
-  $(SDK_ROOT)/integration/nrfx/legacy/ \
+  $(SDK_ROOT)/integration/nrfx/legacy \
+  $(SDK_ROOT)/components/libraries/button \
 # Libraries common to all targets
 LIB_FILES += \
 
@@ -94,10 +105,6 @@ CFLAGS += -DNRFX_GPIOTE_CONFIG_NUM_OF_LOW_POWER_EVENTS=1
 CFLAGS += -DNRFX_PWM_ENABLED=1
 CFLAGS += -DNRFX_PWM0_ENABLED=1
 CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_IRQ_PRIORITY=6
-CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_OUT0_PIN=31
-CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_OUT1_PIN=31
-CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_OUT2_PIN=31
-CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_OUT3_PIN=31
 CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_BASE_CLOCK=4
 CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_COUNT_MODE=0
 CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_TOP_VALUE=1000
@@ -109,6 +116,21 @@ CFLAGS += -DNRFX_PRS_ENABLED=1
 CFLAGS += -DNRFX_PRS_BOX_0_ENABLED=1
 CFLAGS += -DNRFX_PRS_CONFIG_IRQ_PRIORITY=6
 CFLAGS += -DNRFX_SYSTICK_ENABLED=1
+CFLAGS += -DNRF_LOG_ENABLED=1
+CFLAGS += -DNRF_LOG_DEFAULT_LEVEL=4  
+CFLAGS += -DNRF_LOG_USES_COLORS=0
+CFLAGS += -DNRF_LOG_DEFERRED=0
+CFLAGS += -DNRF_LOG_BUFSIZE=1024
+# UART бэкенд для логов
+CFLAGS += -DNRF_LOG_BACKEND_UART_ENABLED=1
+CFLAGS += -DNRF_LOG_BACKEND_UART_TX_PIN=6
+CFLAGS += -DNRF_LOG_BACKEND_UART_BAUDRATE=30801920
+# Таймстампы для логов
+CFLAGS += -DNRF_LOG_TIMESTAMP_DEFAULT_ENABLED=1
+CFLAGS += -DAPP_TIMER_ENABLED=1
+CFLAGS += -DAPP_TIMER_KEEPS_RTC_ACTIVE=1
+CFLAGS += -DAPP_TIMER_CONFIG_USE_SCHEDULER=0
+
 # keep every function in a separate section, this allows linker to discard unused ones
 CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing
 CFLAGS += -fno-builtin -fshort-enums
