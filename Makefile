@@ -47,7 +47,7 @@ SRC_FILES += \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_uart.c \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_power.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_power.c \
-
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_nvmc.c \
 
 
 # Include folders common to all targets
@@ -121,15 +121,7 @@ CFLAGS += -DNRF_LOG_DEFAULT_LEVEL=4
 CFLAGS += -DNRF_LOG_USES_COLORS=0
 CFLAGS += -DNRF_LOG_DEFERRED=0
 CFLAGS += -DNRF_LOG_BUFSIZE=1024
-# UART бэкенд для логов
-CFLAGS += -DNRF_LOG_BACKEND_UART_ENABLED=1
-CFLAGS += -DNRF_LOG_BACKEND_UART_TX_PIN=6
-CFLAGS += -DNRF_LOG_BACKEND_UART_BAUDRATE=30801920
-# Таймстампы для логов
-CFLAGS += -DNRF_LOG_TIMESTAMP_DEFAULT_ENABLED=1
-CFLAGS += -DAPP_TIMER_ENABLED=1
-CFLAGS += -DAPP_TIMER_KEEPS_RTC_ACTIVE=1
-CFLAGS += -DAPP_TIMER_CONFIG_USE_SCHEDULER=0
+
 
 # keep every function in a separate section, this allows linker to discard unused ones
 CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing

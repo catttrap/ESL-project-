@@ -6,6 +6,11 @@
 #include "nrfx_gpiote.h"
 #include "app_timer.h"
 #include "nrfx_clock.h"
+#include "nrfx_nvmc.h"
+#include "nrf_log.h"
+#include "nrf_log_ctrl.h"
+#include "nrf_log_default_backends.h"
+#include "nrf_log_backend_usb.h"
 
 /* ---------------- Pins ---------------- */
 #define INDICATOR_LED_PIN NRF_GPIO_PIN_MAP(0,6)
@@ -30,6 +35,10 @@
 #define SLOW_BLINK_PERIOD_MS   1500 /**< Период медленного мигания в мс */  
 #define FAST_BLINK_PERIOD_MS   500  /**< Период быстрого мигания в мс */
 
+/* ---------------- Flash Memory ---------------- */
+#define FLASH_SAVE_ADDR 0x0007F000 /**< Адрес для сохранения данных в Flash (последняя страница) */
+
+
 /* ---------------- Forward decl ---------------- */
 void pwm_init(void);
 void button_init(void);
@@ -45,6 +54,8 @@ static void update_pwm_outputs(uint16_t indicator, uint16_t red, uint16_t green,
 
 static nrfx_pwm_t m_pwm_instance = NRFX_PWM_INSTANCE(0);    /**< Экземпляр PWM */
 static nrf_pwm_values_individual_t m_pwm_channel_values;    /**< Значения для каналов PWM */
+
+
 
 /**
  * @brief Режимы ввода устройства
@@ -83,6 +94,88 @@ APP_TIMER_DEF(double_click_timer);  /**< Таймер двойного клик�
 static uint32_t m_indicator_step = 1;   /**< Шаг изменения индикатора */
 
 static uint32_t m_indicator_period_ms = SLOW_BLINK_PERIOD_MS;   /**< Период мигания индикатора */
+
+// Конвертирование HSV параметров в 32-битное число
+static uint32_t conv_hsv_params_to_uint32(float hue, int saturation, int value)
+{
+    // Преобразуем hue в целое число с фиксированной точностью (0.1 градус точность)
+    uint16_t hue_int = (uint16_t)(hue * 10.0f);
+    uint8_t sat_int = (uint8_t)saturation;
+    uint8_t val_int = (uint8_t)value;
+    
+    return ((uint32_t)hue_int << 16) | ((uint32_t)sat_int << 8) | val_int;
+}
+
+// Конвертирование 32-битного числа в HSV параметры
+static void conv_uint32_to_hsv_params(uint32_t packed, float *hue, int *saturation, int *value)
+{
+    uint16_t hue_int = (uint16_t)((packed >> 16) & 0xFFFF);
+    uint8_t sat_int = (uint8_t)((packed >> 8) & 0xFF);
+    uint8_t val_int = (uint8_t)(packed & 0xFF);
+    
+    *hue = hue_int / 10.0f;
+    *saturation = (int)sat_int;
+    *value = (int)val_int;
+}
+
+// Сохранение текущих настроек в память
+static void save_hsv_to_flash(void)
+{
+    uint32_t data_to_write = conv_hsv_params_to_uint32(m_current_hue, m_current_saturation, m_current_value);
+    
+    uint32_t *p_flash = (uint32_t *)FLASH_SAVE_ADDR;
+    uint32_t current_flash_data = *p_flash;
+
+    // Если данные не изменились, не перезаписываем
+    if (current_flash_data == data_to_write)
+        return;
+
+    // Стираем страницу памяти
+    nrfx_nvmc_page_erase(FLASH_SAVE_ADDR);
+    
+    // Ждем завершения стирания
+    while (!nrfx_nvmc_write_done_check());
+    
+    // Записываем данные
+    nrfx_nvmc_word_write(FLASH_SAVE_ADDR, data_to_write);
+    
+    // Ждем завершения записи
+    while (!nrfx_nvmc_write_done_check());
+
+    NRF_LOG_INFO("Saving HSV to flash: H=%.1f S=%d V=%d",
+             m_current_hue, m_current_saturation, m_current_value);
+}
+
+// Чтение сохраненного значения из памяти
+static bool load_hsv_from_flash(void)
+{
+    uint32_t *p_flash = (uint32_t *)FLASH_SAVE_ADDR;
+    uint32_t data = *p_flash;
+
+    // Проверяем, была ли страница записана ранее (0xFFFFFFFF - стертая память)
+    if (data == 0xFFFFFFFF)
+        return false;
+
+    // Распаковываем данные
+    float loaded_hue;
+    int loaded_saturation, loaded_value;
+    conv_uint32_to_hsv_params(data, &loaded_hue, &loaded_saturation, &loaded_value);
+    NRF_LOG_INFO("Loaded from flash: H=%.1f S=%d V=%d",
+             loaded_hue, loaded_saturation, loaded_value);
+
+    // Проверяем валидность данных
+    if (loaded_hue >= 0.0f && loaded_hue <= 360.0f &&
+        loaded_saturation >= 0 && loaded_saturation <= 100 &&
+        loaded_value >= 0 && loaded_value <= 100) {
+        
+        m_current_hue = loaded_hue;
+        m_current_saturation = loaded_saturation;
+        m_current_value = loaded_value;
+        return true;
+    }
+    NRF_LOG_WARNING("Flash data invalid, using defaults");
+    return false;
+}
 
 /**
 * @brief Вспомогательная функция: ограничение целого значения в диапазоне.
@@ -168,6 +261,9 @@ static void update_pwm_outputs(uint16_t indicator, uint16_t red, uint16_t green,
     };
 
     nrfx_pwm_simple_playback(&m_pwm_instance, &sequence, 1, 0);
+    
+    NRF_LOG_DEBUG("PWM R=%d G=%d B=%d IND=%d", red, green, blue, indicator);
+
 }
 
 /**
@@ -291,6 +387,7 @@ void button_press_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
 
         // Циклическое переключение режимов
          m_current_mode = (m_current_mode + 1) % 4;
+         NRF_LOG_INFO("Mode switched to %d", m_current_mode);
 
         // Сброс направлений изменения
         m_hue_direction = 1;
@@ -308,6 +405,11 @@ void button_press_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
  */
 void main_timer_handler(void *p_context) {
     (void)p_context;
+
+    static bool needs_save = false;
+    static float last_hue = 0.0f;
+    static int last_saturation = 100;
+    static int last_value = 100;
 
     // Проверка отпускания кнопки
     if (m_button_hold) {
@@ -328,6 +430,8 @@ void main_timer_handler(void *p_context) {
                     m_current_hue = 0.0f;
                     m_hue_direction = 1;
                 }
+                needs_save = true;
+                NRF_LOG_INFO("Hue change: %d -> %d", (int)(m_current_hue - m_hue_direction), (int)m_current_hue);
                 break;
                 
             case MODE_SATURATION:
@@ -339,6 +443,8 @@ void main_timer_handler(void *p_context) {
                     m_current_saturation = 0;
                     m_saturation_direction = 1;
                 }
+                needs_save = true;
+                NRF_LOG_INFO("Saturation: %d", m_current_saturation);
                 break;
                 
             case MODE_VALUE:
@@ -350,11 +456,27 @@ void main_timer_handler(void *p_context) {
                     m_current_value = 0;
                     m_value_direction = 1;
                 }
+                needs_save = true;
+                NRF_LOG_INFO("Value: %d", m_current_value);
                 break;
                 
             default:
                 break;
         }
+    }
+
+     // Сохраняем в Flash при изменении параметров
+    if (needs_save && !m_button_hold) {
+        if (last_hue != m_current_hue || 
+            last_saturation != m_current_saturation || 
+            last_value != m_current_value) {
+            
+            save_hsv_to_flash();
+            last_hue = m_current_hue;
+            last_saturation = m_current_saturation;
+            last_value = m_current_value;
+        }
+        needs_save = false;
     }
 
     // Обновление индикатора
@@ -399,10 +521,19 @@ int main(void) {
     // Инициализация таймеров
     app_timer_init();
 
-    // Установка начальных значений HSV
-    m_current_saturation = 100;
-    m_current_value = 100;
-    m_current_hue = (1.0f / 100.0f) * 360.0f; // 1% от 360° = 3.6°
+    // Инициализация логирования
+    ret_code_t err_code = NRF_LOG_INIT(NULL);
+    APP_ERROR_CHECK(err_code);
+    NRF_LOG_DEFAULT_BACKENDS_INIT();
+    
+    bool loaded = load_hsv_from_flash();
+    
+    if (!loaded) {
+        // Установка начальных значений HSV 
+        m_current_saturation = 100;
+        m_current_value = 100;
+        m_current_hue = (1.0f / 100.0f) * 360.0f; // 1% от 360° = 3.6°
+    }
 
     // Настройка индикатора для текущего режима
     update_indicator_for_current_mode();
@@ -418,6 +549,7 @@ int main(void) {
 
     // Основной цикл
     while (1) {
+        NRF_LOG_PROCESS();
         __WFE();
     }
 }
