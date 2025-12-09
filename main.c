@@ -10,7 +10,11 @@
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
-#include "nrf_log_backend_usb.h"
+
+
+#include "app_usbd.h"
+#include "app_usbd_serial_num.h"
+
 
 /* ---------------- Pins ---------------- */
 #define INDICATOR_LED_PIN NRF_GPIO_PIN_MAP(0,6)
@@ -142,8 +146,8 @@ static void save_hsv_to_flash(void)
     // Ждем завершения записи
     while (!nrfx_nvmc_write_done_check());
 
-    NRF_LOG_INFO("Saving HSV to flash: H=%.1f S=%d V=%d",
-             m_current_hue, m_current_saturation, m_current_value);
+   // NRF_LOG_INFO("Saving HSV to flash: H=%.1f S=%d V=%d",
+    //         m_current_hue, m_current_saturation, m_current_value);
 }
 
 // Чтение сохраненного значения из памяти
@@ -160,8 +164,8 @@ static bool load_hsv_from_flash(void)
     float loaded_hue;
     int loaded_saturation, loaded_value;
     conv_uint32_to_hsv_params(data, &loaded_hue, &loaded_saturation, &loaded_value);
-    NRF_LOG_INFO("Loaded from flash: H=%.1f S=%d V=%d",
-             loaded_hue, loaded_saturation, loaded_value);
+   // NRF_LOG_INFO("Loaded from flash: H=%d S=%d V=%d",
+    //         loaded_hue, loaded_saturation, loaded_value);
 
     // Проверяем валидность данных
     if (loaded_hue >= 0.0f && loaded_hue <= 360.0f &&
@@ -173,7 +177,7 @@ static bool load_hsv_from_flash(void)
         m_current_value = loaded_value;
         return true;
     }
-    NRF_LOG_WARNING("Flash data invalid, using defaults");
+    //NRF_LOG_WARNING("Flash data invalid, using defaults");
     return false;
 }
 
@@ -262,7 +266,7 @@ static void update_pwm_outputs(uint16_t indicator, uint16_t red, uint16_t green,
 
     nrfx_pwm_simple_playback(&m_pwm_instance, &sequence, 1, 0);
     
-    NRF_LOG_DEBUG("PWM R=%d G=%d B=%d IND=%d", red, green, blue, indicator);
+    //NRF_LOG_DEBUG("PWM R=%d G=%d B=%d IND=%d", red, green, blue, indicator);
 
 }
 
@@ -387,7 +391,7 @@ void button_press_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
 
         // Циклическое переключение режимов
          m_current_mode = (m_current_mode + 1) % 4;
-         NRF_LOG_INFO("Mode switched to %d", m_current_mode);
+         //NRF_LOG_INFO("Mode switched to %d", m_current_mode);
 
         // Сброс направлений изменения
         m_hue_direction = 1;
@@ -431,7 +435,7 @@ void main_timer_handler(void *p_context) {
                     m_hue_direction = 1;
                 }
                 needs_save = true;
-                NRF_LOG_INFO("Hue change: %d -> %d", (int)(m_current_hue - m_hue_direction), (int)m_current_hue);
+                //NRF_LOG_INFO("Hue change: %d -> %d", (int)(m_current_hue - m_hue_direction), (int)m_current_hue);
                 break;
                 
             case MODE_SATURATION:
@@ -444,7 +448,7 @@ void main_timer_handler(void *p_context) {
                     m_saturation_direction = 1;
                 }
                 needs_save = true;
-                NRF_LOG_INFO("Saturation: %d", m_current_saturation);
+                //NRF_LOG_INFO("Saturation: %d", m_current_saturation);
                 break;
                 
             case MODE_VALUE:
@@ -457,7 +461,7 @@ void main_timer_handler(void *p_context) {
                     m_value_direction = 1;
                 }
                 needs_save = true;
-                NRF_LOG_INFO("Value: %d", m_current_value);
+               // NRF_LOG_INFO("Value: %d", m_current_value);
                 break;
                 
             default:
@@ -509,10 +513,133 @@ void main_timer_handler(void *p_context) {
     update_pwm_outputs(indicator_brightness, red, green, blue);
 }
 
+void logs_init()
+{
+    // ret_code_t ret = NRF_LOG_INIT(NULL);
+    // APP_ERROR_CHECK(ret);
+
+    // NRF_LOG_DEFAULT_BACKENDS_INIT();
+}
+
+
+#if ESTC_USB_CLI_ENABLED
+#include "nrf_drv_clock.h"
+#include "app_usbd.h"
+#include "app_usbd_cdc_acm.h"
+#include "nrf_cli.h"
+#include "nrf_cli_cdc_acm.h"
+#include "nrf_delay.h"
+#include "nrf_log.h"
+#include "nrf_log_ctrl.h"
+#include "nrf_log_default_backends.h"
+
+// ---------------------- CLI через USB ----------------------
+NRF_CLI_CDC_ACM_DEF(m_cli_cdc_acm_transport);
+
+NRF_CLI_DEF(m_cli,
+            "usb_cli:~$ ",
+            &m_cli_cdc_acm_transport.transport,
+            '\r',
+            4);
+
+// ---------------------- Простая логика RGB/HSV ----------------------
+static uint8_t r_val = 0, g_val = 0, b_val = 0;
+
+static void cmd_rgb(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+{
+    if (argc != 4)
+    {
+        nrf_cli_fprintf(p_cli, NRF_CLI_ERROR, "Usage: RGB <r> <g> <b>\n");
+        return;
+    }
+
+    r_val = atoi(argv[1]);
+    g_val = atoi(argv[2]);
+    b_val = atoi(argv[3]);
+
+    if (r_val>255 || g_val>255 || b_val>255)
+    {
+        nrf_cli_fprintf(p_cli, NRF_CLI_ERROR, "Values must be 0-255\n");
+        return;
+    }
+
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL, "Color set to R=%d G=%d B=%d\n", r_val, g_val, b_val);
+}
+
+static void cmd_hsv(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+{
+    if (argc != 4)
+    {
+        nrf_cli_fprintf(p_cli, NRF_CLI_ERROR, "Usage: HSV <h> <s> <v>\n");
+        return;
+    }
+    int h = atoi(argv[1]);
+    int s = atoi(argv[2]);
+    int v = atoi(argv[3]);
+
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL, "Color set to H=%d S=%d V=%d\n", h, s, v);
+}
+
+static void cmd_help(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+{
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL, "Supported commands:\n");
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL, "  RGB <r> <g> <b>\n");
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL, "  HSV <h> <s> <v>\n");
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL, "  help\n");
+}
+
+// Регистрация команд
+NRF_CLI_CMD_REGISTER(RGB, NULL, "Set color using RGB", cmd_rgb);
+NRF_CLI_CMD_REGISTER(HSV, NULL, "Set color using HSV", cmd_hsv);
+NRF_CLI_CMD_REGISTER(help, NULL, "Show help", cmd_help);
+
+// ---------------------- USB и CLI ----------------------
+static void usbd_user_ev_handler(app_usbd_event_type_t event)
+{
+    switch(event)
+    {
+        case APP_USBD_EVT_STOPPED: app_usbd_disable(); break;
+        case APP_USBD_EVT_POWER_DETECTED: if(!nrf_drv_usbd_is_enabled()) app_usbd_enable(); break;
+        case APP_USBD_EVT_POWER_READY: app_usbd_start(); break;
+        default: break;
+    }
+}
+
+void usb_cli_init(void)
+{
+    ret_code_t ret;
+
+    ret = nrf_cli_init(&m_cli, NULL, true, true, NRF_LOG_SEVERITY_INFO);
+    APP_ERROR_CHECK(ret);
+
+    static const app_usbd_config_t usbd_config = { .ev_state_proc = usbd_user_ev_handler };
+    app_usbd_serial_num_generate();
+    ret = app_usbd_init(&usbd_config);
+    APP_ERROR_CHECK(ret);
+
+    ret = app_usbd_class_append(app_usbd_cdc_acm_class_inst_get(&nrf_cli_cdc_acm));
+    APP_ERROR_CHECK(ret);
+
+    ret = app_usbd_power_events_enable();
+    APP_ERROR_CHECK(ret);
+
+    ret = nrf_cli_start(&m_cli);
+    APP_ERROR_CHECK(ret);
+}
+
+#else
+
+void usb_cli_init(void) {}
+
+
+#endif
+
 /**
  * @brief Основная функция программы
  */
 int main(void) {
+
+    logs_init();    
     // Инициализация тактирования
     nrfx_clock_init(NULL);
     nrfx_clock_lfclk_start();
@@ -522,9 +649,9 @@ int main(void) {
     app_timer_init();
 
     // Инициализация логирования
-    ret_code_t err_code = NRF_LOG_INIT(NULL);
-    APP_ERROR_CHECK(err_code);
-    NRF_LOG_DEFAULT_BACKENDS_INIT();
+    // ret_code_t err_code = NRF_LOG_INIT(NULL);
+    // APP_ERROR_CHECK(err_code);
+    // NRF_LOG_DEFAULT_BACKENDS_INIT();
     
     bool loaded = load_hsv_from_flash();
     
@@ -547,9 +674,12 @@ int main(void) {
     convert_hsv_to_rgb(m_current_hue, m_current_saturation, m_current_value, &red, &green, &blue);
     update_pwm_outputs(0, red, green, blue);
 
+    usb_cli_init();
     // Основной цикл
-    while (1) {
+    while(1)
+    {
         NRF_LOG_PROCESS();
-        __WFE();
+        nrf_cli_process(&m_cli);
+        __WFE(); 
     }
 }
