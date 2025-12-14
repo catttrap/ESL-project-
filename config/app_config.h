@@ -1,130 +1,152 @@
-/**
- * Copyright 2021 Evgeniy Morozov
- *
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * 3. Neither the name of the copyright holder nor the names of its contributors
- * may be used to endorse or promote products derived from this software without
- * specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY
- * WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE
-*/
 #ifndef APP_CONFIG_H
 #define APP_CONFIG_H
 
-// <e> NRF_LOG_BACKEND_UART_ENABLED - nrf_log_backend_uart - Log UART backend
-//==========================================================
-#ifndef NRF_LOG_BACKEND_UART_ENABLED
-#define NRF_LOG_BACKEND_UART_ENABLED 0
-#endif
-// <o> NRF_LOG_BACKEND_UART_TX_PIN - UART TX pin 
-#ifndef NRF_LOG_BACKEND_UART_TX_PIN
-#define NRF_LOG_BACKEND_UART_TX_PIN 6
-#endif
-
-// <o> NRF_LOG_BACKEND_UART_BAUDRATE  - Default Baudrate
+#define NRF_MPU_LIB_ENABLED 0
+#define NRF_STACK_GUARD_ENABLED 0
+#define NRF_STACK_GUARD_CONFIG_SIZE 7
+#define NRF_LOG_STR_FORMATTER_TIMESTAMP_FORMAT_ENABLED 0
  
-// <323584=> 1200 baud 
-// <643072=> 2400 baud 
-// <1290240=> 4800 baud 
-// <2576384=> 9600 baud 
-// <3862528=> 14400 baud 
-// <5152768=> 19200 baud 
-// <7716864=> 28800 baud 
-// <10289152=> 38400 baud 
-// <15400960=> 57600 baud 
-// <20615168=> 76800 baud 
-// <30801920=> 115200 baud 
-// <61865984=> 230400 baud 
-// <67108864=> 250000 baud 
-// <121634816=> 460800 baud 
-// <251658240=> 921600 baud 
-// <268435456=> 1000000 baud 
+// nRF_Drivers 
 
-#ifndef NRF_LOG_BACKEND_UART_BAUDRATE
-#define NRF_LOG_BACKEND_UART_BAUDRATE 30801920
-#endif
+// GPIOTE
+#define GPIOTE_ENABLED 1
+#define GPIOTE_CONFIG_IRQ_PRIORITY 6
 
-// <o> NRF_LOG_BACKEND_UART_TEMP_BUFFER_SIZE - Size of buffer for partially processed strings. 
-// <i> Size of the buffer is a trade-off between RAM usage and processing.
-// <i> if buffer is smaller then strings will often be fragmented.
-// <i> It is recommended to use size which will fit typical log and only the
-// <i> longer one will be fragmented.
+// <e> NRFX_GPIOTE
+#define NRFX_GPIOTE_ENABLED 1
+#define NRFX_GPIOTE_CONFIG_IRQ_PRIORITY 6
+#define NRFX_GPIOTE_CONFIG_NUM_OF_LOW_POWER_EVENTS 1
 
-#ifndef NRF_LOG_BACKEND_UART_TEMP_BUFFER_SIZE
-#define NRF_LOG_BACKEND_UART_TEMP_BUFFER_SIZE 64
-#endif
-// </e>
+// <e> NRF_CLOCK
+#define NRF_CLOCK_ENABLED 1
+#define CLOCK_CONFIG_LF_SRC 1
+#define CLOCK_CONFIG_IRQ_PRIORITY 6
+
+// NRFX_CLOCK
+#define NRFX_CLOCK_ENABLED 1
+#define NRFX_CLOCK_CONFIG_LF_SRC 1
+#define NRFX_CLOCK_CONFIG_IRQ_PRIORITY 6
 
 
-// <e> LOG_BACKEND_USB_ENABLED - log_backend_usb - Log USB backend
+// PWM
+#define PWM_ENABLED 1
+
+// NRFX_PWM
+#define NRFX_PWM_ENABLED 1
+#define NRFX_PWM0_ENABLED 1
+#define NRFX_PWM1_ENABLED 0
+#define NRFX_PWM2_ENABLED 0
+#define NRFX_PWM3_ENABLED 0
+#define NRFX_PWM_DEFAULT_CONFIG_OUT0_PIN 31
+#define NRFX_PWM_DEFAULT_CONFIG_OUT1_PIN 31
+#define NRFX_PWM_DEFAULT_CONFIG_OUT2_PIN 31
+#define NRFX_PWM_DEFAULT_CONFIG_OUT3_PIN 31
+#define NRFX_PWM_DEFAULT_CONFIG_BASE_CLOCK 4
+#define NRFX_PWM_DEFAULT_CONFIG_TOP_VALUE 1000
+#define NRFX_PWM_DEFAULT_CONFIG_IRQ_PRIORITY 6
+
+// NRFX_RTC
+#define NRFX_RTC_ENABLED 1
+#define NRFX_RTC0_ENABLED 1
+#define NRFX_RTC1_ENABLED 1
+#define NRFX_RTC2_ENABLED 1
+#define NRFX_RTC_MAXIMUM_LATENCY_US 2000
+#define NRFX_RTC_DEFAULT_CONFIG_FREQUENCY 32768
+#define NRFX_RTC_DEFAULT_CONFIG_RELIABLE 0
+#define NRFX_RTC_DEFAULT_CONFIG_IRQ_PRIORITY 6
+#define NRFX_RTC_CONFIG_LOG_ENABLED 0
+#define NRFX_RTC_CONFIG_LOG_LEVEL 3
+#define NRFX_RTC_CONFIG_INFO_COLOR 0
+#define NRFX_RTC_CONFIG_DEBUG_COLOR 0
+
+
+// SYSTICK
+#define SYSTICK_ENABLED 1
+
+// NRFX_SYSTICK
+#define NRFX_SYSTICK_ENABLED 1
+
+
+// POWER
+#define POWER_ENABLED 1
+#define POWER_CONFIG_IRQ_PRIORITY 6
+
+//nRF_Libraries 
+#define APP_FIFO_ENABLED 1
+#define APP_GPIOTE_ENABLED 0
+#define APP_PWM_ENABLED 0
+#define APP_TIMER_ENABLED 1
+#define APP_TIMER_CONFIG_RTC_FREQUENCY 1
+#define APP_TIMER_CONFIG_IRQ_PRIORITY 6
+#define APP_TIMER_KEEPS_RTC_ACTIVE 0
+#define APP_TIMER_SAFE_WINDOW_MS 300000
+#define APP_TIMER_CONFIG_OP_QUEUE_SIZE 10
+#define APP_USBD_CONFIG_LOG_ENABLED 0
+
+// NRFX_NVMC
+#define NRFX_NVMC_ENABLED 1
+
+// <e> RTC_ENABLED - nrf_drv_rtc - RTC peripheral driver - legacy layer
 //==========================================================
-#ifndef LOG_BACKEND_USB_ENABLED
-#define LOG_BACKEND_USB_ENABLED 1
+#ifndef RTC_ENABLED
+#define RTC_ENABLED 0
+#endif
+// <o> RTC_DEFAULT_CONFIG_FREQUENCY - Frequency  <16-32768> 
+
+
+#ifndef RTC_DEFAULT_CONFIG_FREQUENCY
+#define RTC_DEFAULT_CONFIG_FREQUENCY 32768
 #endif
 
-// <o> LOG_BACKEND_USB_TEMP_BUFFER_SIZE - Size of buffer for partially processed strings. 
-// <i> Size of the buffer is a trade-off between RAM usage and processing.
-// <i> if buffer is smaller then strings will often be fragmented.
-// <i> It is recommended to use size which will fit typical log and only the
-// <i> longer one will be fragmented.
-#ifndef LOG_BACKEND_USB_TMP_BUFFER_SIZE
-#define LOG_BACKEND_USB_TMP_BUFFER_SIZE 64
+// <q> RTC_DEFAULT_CONFIG_RELIABLE  - Ensures safe compare event triggering
+ 
+
+#ifndef RTC_DEFAULT_CONFIG_RELIABLE
+#define RTC_DEFAULT_CONFIG_RELIABLE 0
 #endif
 
-// <o> LOG_BACKEND_USB_CDC_ACM_COMM_INTERFACE - CDC ACM COMM Interface number
-#ifndef LOG_BACKEND_USB_CDC_ACM_COMM_INTERFACE
-#define LOG_BACKEND_USB_CDC_ACM_COMM_INTERFACE 0
+// <o> RTC_DEFAULT_CONFIG_IRQ_PRIORITY  - Interrupt priority
+ 
+
+// <i> Priorities 0,2 (nRF51) and 0,1,4,5 (nRF52) are reserved for SoftDevice
+// <0=> 0 (highest) 
+// <1=> 1 
+// <2=> 2 
+// <3=> 3 
+// <4=> 4 
+// <5=> 5 
+// <6=> 6 
+// <7=> 7 
+
+#ifndef RTC_DEFAULT_CONFIG_IRQ_PRIORITY
+#define RTC_DEFAULT_CONFIG_IRQ_PRIORITY 6
 #endif
 
-// <o> LOG_BACKEND_USB_CDC_ACM_DATA_INTERFACE - CDC ACM Data Interface number
-#ifndef LOG_BACKEND_USB_CDC_ACM_DATA_INTERFACE
-#define LOG_BACKEND_USB_CDC_ACM_DATA_INTERFACE 1
+// <q> RTC0_ENABLED  - Enable RTC0 instance
+ 
+
+#ifndef RTC0_ENABLED
+#define RTC0_ENABLED 1
 #endif
 
-// <o> LOG_BACKEND_USB_CDC_ACM_COMM_EPIN - CDC ACM COMM IN endpoint number
-#ifndef LOG_BACKEND_USB_CDC_ACM_COMM_EPIN
-#define LOG_BACKEND_USB_CDC_ACM_COMM_EPIN 2
+// <q> RTC1_ENABLED  - Enable RTC1 instance
+ 
+
+#ifndef RTC1_ENABLED
+#define RTC1_ENABLED 0
 #endif
 
-// <o> LOG_BACKEND_USB_CDC_ACM_DATA_EPIN - CDC ACM DATA IN endpoint number
-#ifndef LOG_BACKEND_USB_CDC_ACM_DATA_EPIN
-#define LOG_BACKEND_USB_CDC_ACM_DATA_EPIN 1
+// <q> RTC2_ENABLED  - Enable RTC2 instance
+ 
+
+#ifndef RTC2_ENABLED
+#define RTC2_ENABLED 0
 #endif
 
-// <o> LOG_BACKEND_USB_CDC_ACM_DATA_EPOUT - CDC ACM DATA OUT endpoint number
-#ifndef LOG_BACKEND_USB_CDC_ACM_DATA_EPOUT
-#define LOG_BACKEND_USB_CDC_ACM_DATA_EPOUT 1
+// <o> NRF_MAXIMUM_LATENCY_US - Maximum possible time[us] in highest priority interrupt 
+#ifndef NRF_MAXIMUM_LATENCY_US
+#define NRF_MAXIMUM_LATENCY_US 2000
 #endif
 
-// <o> LOG_BACKEND_USB_INIT_STACK - Init the USB stack during USB log backend init procedure
-#ifndef LOG_BACKEND_USB_INIT_STACK
-#define LOG_BACKEND_USB_INIT_STACK 1
-#endif
-
-// <o> LOG_BACKEND_USB_UTILIZE_POWER_EVENTS - Start the USB backend based on power
-#ifndef LOG_BACKEND_USB_UTILIZE_POWER_EVENTS
-#define LOG_BACKEND_USB_UTILIZE_POWER_EVENTS 1
-#endif
-
-// </e>
-
-#endif
+ 
+#endif //APP_CONFIG_H
