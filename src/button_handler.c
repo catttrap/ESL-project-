@@ -5,8 +5,8 @@
 #include "nrf_gpio.h"
 
 /* ---------------- Timings ---------------- */
-#define DEBOUNCE_MS       200   /**< Время антидребезга в миллисекундах */
-#define DOUBLE_CLICK_MS   500   /**< Таймаут для обнаружения двойного клика */
+#define DEBOUNCE_MS       30   /**< Время антидребезга в миллисекундах */
+#define DOUBLE_CLICK_MS   300   /**< Таймаут для обнаружения двойного клика */
 
 APP_TIMER_DEF(debounce_timer);  /**< Таймер антидребезга */
 APP_TIMER_DEF(double_click_timer);  /**< Таймер двойного клика */

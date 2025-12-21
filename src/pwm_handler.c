@@ -2,10 +2,11 @@
 #include "nrfx_pwm.h"
 #include "nrf_pwm.h"
 #include "app_timer.h"
+#include "nrf_log.h"
 
 #define DUTY_MAX               1000 /**< Максимальное значение скважности (100%) для ШИМ 1кГц */
-#define SLOW_BLINK_PERIOD_MS   1500 /**< Период медленного мигания в мс */  
-#define FAST_BLINK_PERIOD_MS   500  /**< Период быстрого мигания в мс */
+#define SLOW_BLINK_PERIOD_MS   500 /**< Период медленного мигания в мс */  
+#define FAST_BLINK_PERIOD_MS   100  /**< Период быстрого мигания в мс */
 
 APP_TIMER_DEF(m_blink_timer);
 
@@ -62,6 +63,7 @@ void pwm_handler_set_rgb(uint16_t r, uint16_t g, uint16_t b)
     m_seq_values.channel_1 = (r > DUTY_MAX) ? DUTY_MAX : r;
     m_seq_values.channel_2 = (g > DUTY_MAX) ? DUTY_MAX : g;
     m_seq_values.channel_3 = (b > DUTY_MAX) ? DUTY_MAX : b;
+    NRF_LOG_DEBUG("PWM R=%d G=%d B=%d", r, g, b);
 }
 
 // Устанавливает режим работы индикатора (мигание/постоянный)
@@ -85,4 +87,5 @@ void pwm_handler_set_indicator_mode(pwm_indicator_mode_t mode)
             app_timer_start(m_blink_timer, APP_TIMER_TICKS(FAST_BLINK_PERIOD_MS), NULL);
             break;
     }
+    
 }
