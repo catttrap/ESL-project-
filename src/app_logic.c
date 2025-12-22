@@ -156,9 +156,9 @@ static void update_leds(void)
     uint16_t r, g, b;
     convert_hsv_to_rgb(m_app_data.current_color, &r, &g, &b);
     
-    NRF_LOG_INFO("Обновление LED: HSV(H:%d S:%d V:%d) -> RGB(R:%d G:%d B:%d)", 
+    NRF_LOG_INFO("Обновление LED: HSV(H:%d S:%d V:%d)", 
                   m_app_data.current_color.h, m_app_data.current_color.s, 
-                  m_app_data.current_color.v, r, g, b);
+                  m_app_data.current_color.v);
     
     pwm_handler_set_rgb(r, g, b);
 }
